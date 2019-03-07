@@ -39,9 +39,9 @@ type SdkPolicyManager struct {
 }
 
 const (
-	policyPrefix = "/storage/policy"
+	policyPrefix = "storage/policy"
 	policyPath   = "/policies"
-	enforcePath  = "/storage/policy/enforce"
+	enforcePath  = "storage/policy/enforce"
 )
 
 var (
