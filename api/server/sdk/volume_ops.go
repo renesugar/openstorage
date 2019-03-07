@@ -679,7 +679,7 @@ func GetEnforcedVolSpecs(locator *api.VolumeLocator, spec *api.VolumeSpec) (*api
 	}
 
 	// check if enforcement is enabled
-	policy, err := storPolicy.EnforceInspect(context.Background(), &api.SdkOpenStoragePolicyEnforceInspectRequest{})
+	policy, err := storPolicy.DefaultInspect(context.Background(), &api.SdkOpenStoragePolicyDefaultInspectRequest{})
 	if err == kvdb.ErrNotFound || policy.GetStoragePolicy() == nil {
 		// enforce is disabled, return original specs
 		return spec, nil

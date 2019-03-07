@@ -175,8 +175,8 @@ func (p *SdkPolicyManager) Delete(
 		return nil, status.Error(codes.InvalidArgument, "Must supply a Storage Policy Name")
 	}
 
-	// release enforcement before deleting policy
-	policy, err := p.EnforceInspect(context.Background(), &api.SdkOpenStoragePolicyEnforceInspectRequest{})
+	// release default policy restriction before deleting policy
+	policy, err := p.DefaultInspect(context.Background(), &api.SdkOpenStoragePolicyDefaultInspectRequest{})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Unable to retrive enforcement details %v", err)
 	}
@@ -255,11 +255,11 @@ func (p *SdkPolicyManager) Enumerate(
 	}, nil
 }
 
-// Enforce given storage policy
-func (p *SdkPolicyManager) Enforce(
+// SetDefault  storage policy
+func (p *SdkPolicyManager) SetDefault(
 	ctx context.Context,
-	req *api.SdkOpenStoragePolicyEnforceRequest,
-) (*api.SdkOpenStoragePolicyEnforceResponse, error) {
+	req *api.SdkOpenStoragePolicySetDefaultRequest,
+) (*api.SdkOpenStoragePolicySetDefaultResponse, error) {
 	if req.GetName() == "" {
 		return nil, status.Error(codes.InvalidArgument, "Must supply a Storage Policy Name")
 	}
@@ -288,7 +288,7 @@ func (p *SdkPolicyManager) Enforce(
 		return nil, status.Errorf(codes.Internal, "Failed to enforce policy: %v", err)
 	}
 
-	return &api.SdkOpenStoragePolicyEnforceResponse{}, nil
+	return &api.SdkOpenStoragePolicySetDefaultResponse{}, nil
 }
 
 // Release storage policy if enforced
@@ -306,13 +306,13 @@ func (p *SdkPolicyManager) Release(
 	return &api.SdkOpenStoragePolicyReleaseResponse{}, nil
 }
 
-// EnforceInspect return enforced policy details
-func (p *SdkPolicyManager) EnforceInspect(
+// EnforceInspect return default storeage policy details
+func (p *SdkPolicyManager) DefaultInspect(
 	ctx context.Context,
-	req *api.SdkOpenStoragePolicyEnforceInspectRequest,
-) (*api.SdkOpenStoragePolicyEnforceInspectResponse, error) {
+	req *api.SdkOpenStoragePolicyDefaultInspectRequest,
+) (*api.SdkOpenStoragePolicyDefaultInspectResponse, error) {
 	var policyName string
-	defaultPolicy := &api.SdkOpenStoragePolicyEnforceInspectResponse{}
+	defaultPolicy := &api.SdkOpenStoragePolicyDefaultInspectResponse{}
 
 	_, err := p.kv.GetVal(enforcePath, &policyName)
 	// enforcePath key is not created
@@ -337,7 +337,7 @@ func (p *SdkPolicyManager) EnforceInspect(
 		return nil, status.Errorf(codes.NotFound, "Policy with name %s not found", policyName)
 	}
 
-	return &api.SdkOpenStoragePolicyEnforceInspectResponse{
+	return &api.SdkOpenStoragePolicyDefaultInspectResponse{
 		StoragePolicy: inspResp.GetStoragePolicy(),
 	}, nil
 }
