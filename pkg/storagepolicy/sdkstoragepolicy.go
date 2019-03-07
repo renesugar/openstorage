@@ -1,5 +1,5 @@
 /*
-Package storagepolicy manages storage policy and enforce policy for
+Package storagepolicy manages storage policy and apply/validate storage policy restriction
 volume operations.
 Copyright 2018 Portworx
 
@@ -41,7 +41,7 @@ type SdkPolicyManager struct {
 const (
 	policyPrefix = "storage/policy"
 	policyPath   = "/policies"
-	enforcePath  = "storage/policy/enforce"
+	defaultPath  = "storage/policy/enforce"
 )
 
 var (
@@ -178,13 +178,13 @@ func (p *SdkPolicyManager) Delete(
 	// release default policy restriction before deleting policy
 	policy, err := p.DefaultInspect(context.Background(), &api.SdkOpenStoragePolicyDefaultInspectRequest{})
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Unable to retrive enforcement details %v", err)
+		return nil, status.Errorf(codes.Internal, "Unable to retrive default policy details %v", err)
 	}
 
 	if policy.GetStoragePolicy() != nil && policy.GetStoragePolicy().GetName() == req.GetName() {
 		_, err := p.Release(ctx, &api.SdkOpenStoragePolicyReleaseRequest{})
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "Disable enforcement failed with: %v", err)
+			return nil, status.Errorf(codes.Internal, "Removal of default policy failed with: %v", err)
 		}
 	}
 	_, err = p.kv.Delete(prefixWithName(req.GetName()))
@@ -279,34 +279,34 @@ func (p *SdkPolicyManager) SetDefault(
 		return nil, status.Errorf(codes.Internal, "Json marshal failed for policy %s :%v", req.GetName(), err)
 	}
 
-	_, err = p.kv.Update(enforcePath, policyStr, 0)
+	_, err = p.kv.Update(defaultPath, policyStr, 0)
 	if err == kvdb.ErrNotFound {
-		if _, err := p.kv.Create(enforcePath, policyStr, 0); err != nil {
-			return nil, status.Errorf(codes.Internal, "Unable to save enforcement details %v", err)
+		if _, err := p.kv.Create(defaultPath, policyStr, 0); err != nil {
+			return nil, status.Errorf(codes.Internal, "Unable to save default policy details %v", err)
 		}
 	} else if err != nil {
-		return nil, status.Errorf(codes.Internal, "Failed to enforce policy: %v", err)
+		return nil, status.Errorf(codes.Internal, "Failed to set default policy: %v", err)
 	}
 
 	return &api.SdkOpenStoragePolicySetDefaultResponse{}, nil
 }
 
-// Release storage policy if enforced
+// Release storage policy if set as default
 func (p *SdkPolicyManager) Release(
 	ctx context.Context,
 	req *api.SdkOpenStoragePolicyReleaseRequest,
 ) (*api.SdkOpenStoragePolicyReleaseResponse, error) {
-	// empty represents no policy enforcement is enabled
+	// empty represents no policy is set as default
 	strB, _ := json.Marshal("")
-	_, err := p.kv.Update(enforcePath, strB, 0)
+	_, err := p.kv.Update(defaultPath, strB, 0)
 	if err != kvdb.ErrNotFound && err != nil {
-		return nil, status.Errorf(codes.Internal, "Disable enforcement failed with: %v", err)
+		return nil, status.Errorf(codes.Internal, "Remove storage policy restriction failed with: %v", err)
 	}
 
 	return &api.SdkOpenStoragePolicyReleaseResponse{}, nil
 }
 
-// EnforceInspect return default storeage policy details
+// DefaultInspect return default storeage policy details
 func (p *SdkPolicyManager) DefaultInspect(
 	ctx context.Context,
 	req *api.SdkOpenStoragePolicyDefaultInspectRequest,
@@ -314,20 +314,20 @@ func (p *SdkPolicyManager) DefaultInspect(
 	var policyName string
 	defaultPolicy := &api.SdkOpenStoragePolicyDefaultInspectResponse{}
 
-	_, err := p.kv.GetVal(enforcePath, &policyName)
-	// enforcePath key is not created
+	_, err := p.kv.GetVal(defaultPath, &policyName)
+	// defaultPath key is not created
 	if err == kvdb.ErrNotFound {
 		return defaultPolicy, nil
 	} else if err != nil {
-		return nil, status.Errorf(codes.Internal, "Unable to retrive Enforcement details: %v", err)
+		return nil, status.Errorf(codes.Internal, "Unable to retrive default policy details: %v", err)
 	}
 
-	// no enforcement found
+	// no default policy found
 	if policyName == "" {
 		return defaultPolicy, nil
 	}
 
-	// retrive enforced policy details
+	// retrive default storage policy details
 	inspResp, err := p.Inspect(context.Background(),
 		&api.SdkOpenStoragePolicyInspectRequest{
 			Name: policyName,

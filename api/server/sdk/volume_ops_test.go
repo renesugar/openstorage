@@ -1124,13 +1124,13 @@ func TestSdkVolumeCreateEnforced(t *testing.T) {
 	assert.Equal(t, resp.StoragePolicy.GetName(), inspReq.GetName())
 	assert.True(t, reflect.DeepEqual(resp.StoragePolicy.GetPolicy(), req.StoragePolicy.GetPolicy()))
 
-	enforceReq := &api.SdkOpenStoragePolicyEnforceRequest{
+	defaultReq := &api.SdkOpenStoragePolicySetDefaultRequest{
 		Name: inspReq.GetName(),
 	}
-	_, err = storePolicy.Enforce(context.Background(), enforceReq)
+	_, err = storePolicy.SetDefault(context.Background(), defaultReq)
 	assert.NoError(t, err)
 
-	policy, err := storePolicy.EnforceInspect(context.Background(), &api.SdkOpenStoragePolicyEnforceInspectRequest{})
+	policy, err := storePolicy.DefaultInspect(context.Background(), &api.SdkOpenStoragePolicyDefaultInspectRequest{})
 	assert.NoError(t, err)
 	assert.Equal(t, policy.GetStoragePolicy().GetName(), inspReq.GetName())
 
