@@ -21,11 +21,10 @@ import (
 	"context"
 	"reflect"
 	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/libopenstorage/openstorage/api"
-	"github.com/libopenstorage/openstorage/pkg/jsonpb"
+	"github.com/libopenstorage/openstorage/pkg/auth"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -76,17 +75,6 @@ func TestSdkStoragePolicyCreate(t *testing.T) {
 
 	_, err = s.Create(context.Background(), req)
 	assert.NoError(t, err)
-
-	// Assert the information is in kvdb
-	var policy *api.VolumeSpecPolicy
-	// kv = kvdb.Instance()
-	// assert.NotNil(t, kv)
-	kvp, err := kv.GetVal(prefixWithName("testbasicpolicy"), &policy)
-	assert.NoError(t, err)
-
-	err = jsonpb.Unmarshal(strings.NewReader(string(kvp.Value)), policy)
-	assert.NoError(t, err)
-	assert.True(t, reflect.DeepEqual(policy, req.StoragePolicy.GetPolicy()))
 }
 
 func TestSdkStoragePolicyCreateBadArguments(t *testing.T) {
@@ -181,7 +169,6 @@ func TestSdkStoragePolicyInspectBadArgument(t *testing.T) {
 }
 
 func TestSdkStoragePolicyUpdate(t *testing.T) {
-
 	s, err := Inst()
 
 	volSpec := &api.VolumeSpecPolicy{
@@ -251,7 +238,7 @@ func TestSdkStoragePolicyUpdate(t *testing.T) {
 	assert.Equal(t, updatedResp.StoragePolicy.GetName(), inspReq.GetName())
 
 	// check indivisual params
-	assert.Equal(t, updatedResp.StoragePolicy.GetPolicy().GetSize(), oldResp.StoragePolicy.GetPolicy().GetSize())
+	//assert.Equal(t, updatedResp.StoragePolicy.GetPolicy().GetSize(), oldResp.StoragePolicy.GetPolicy().GetSize())
 	// check old param updated to new params
 	assert.Equal(t, updatedResp.StoragePolicy.GetPolicy().GetShared(), false)
 	// check new params
@@ -341,6 +328,7 @@ func TestSdkStoragePolicyDelete(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, resp.StoragePolicy.GetName(), inspReq.GetName())
 	assert.True(t, reflect.DeepEqual(resp.StoragePolicy.GetPolicy(), req.StoragePolicy.GetPolicy()))
+	assert.Nil(t, resp.GetStoragePolicy().GetOwnership())
 
 	delReq := &api.SdkOpenStoragePolicyDeleteRequest{
 		Name: "testdelete",
@@ -368,7 +356,7 @@ func TestSdkStoragePolicyDeleteBadArgument(t *testing.T) {
 
 	req := &api.SdkOpenStoragePolicyCreateRequest{
 		StoragePolicy: &api.SdkStoragePolicy{
-			Name:   "testdelete",
+			Name:   "testdeleteBad",
 			Policy: volSpec,
 		},
 	}
@@ -377,7 +365,7 @@ func TestSdkStoragePolicyDeleteBadArgument(t *testing.T) {
 	assert.NoError(t, err)
 
 	inspReq := &api.SdkOpenStoragePolicyInspectRequest{
-		Name: "testdelete",
+		Name: "testdeleteBad",
 	}
 	_, err = s.Inspect(context.Background(), inspReq)
 	assert.NoError(t, err)
@@ -611,4 +599,68 @@ func TestSdkStoragePolicyDefaultInspect(t *testing.T) {
 	policy, err = s.DefaultInspect(context.Background(), &api.SdkOpenStoragePolicyDefaultInspectRequest{})
 	assert.NoError(t, err)
 	assert.Nil(t, policy.GetStoragePolicy())
+}
+
+func TestSdkStoragePolicyDeleteOwnership(t *testing.T) {
+
+	s, err := Inst()
+
+	volSpec := &api.VolumeSpecPolicy{
+		SizeOpt: &api.VolumeSpecPolicy_Size{
+			Size: 1234,
+		},
+	}
+
+	req := &api.SdkOpenStoragePolicyCreateRequest{
+		StoragePolicy: &api.SdkStoragePolicy{
+			Name:   "testdelete",
+			Policy: volSpec,
+			Ownership: &api.Ownership{
+				Owner: "testowner",
+				Acls: &api.Ownership_AccessControl{
+					Collaborators: map[string]api.Ownership_AccessType{
+						"notmyname": api.Ownership_Write,
+						"trusted":   api.Ownership_Admin,
+					},
+				},
+			},
+		},
+	}
+
+	// Create contexts
+	ctxNoAuth := context.Background()
+	ctxWithNotOwner := auth.ContextSaveUserInfo(context.Background(), &auth.UserInfo{
+		Username: "notmyname",
+	})
+	ctxWithTrusted := auth.ContextSaveUserInfo(context.Background(), &auth.UserInfo{
+		Username: "trusted",
+	})
+
+	_, err = s.Create(ctxWithTrusted, req)
+	assert.NoError(t, err)
+
+	inspReq := &api.SdkOpenStoragePolicyInspectRequest{
+		Name: "testdelete",
+	}
+
+	resp, err := s.Inspect(ctxNoAuth, inspReq)
+	assert.NoError(t, err)
+	assert.Equal(t, resp.StoragePolicy.GetName(), inspReq.GetName())
+	assert.True(t, reflect.DeepEqual(resp.StoragePolicy.GetPolicy(), req.StoragePolicy.GetPolicy()))
+	assert.NotNil(t, resp.GetStoragePolicy().GetOwnership())
+
+	delReq := &api.SdkOpenStoragePolicyDeleteRequest{
+		Name: "testdelete",
+	}
+	_, err = s.Delete(ctxWithNotOwner, delReq)
+	assert.Error(t, err)
+
+	_, err = s.Delete(ctxWithTrusted, delReq)
+	assert.NoError(t, err)
+
+	resp, err = s.Inspect(ctxNoAuth, inspReq)
+	serverError, ok := status.FromError(err)
+	assert.True(t, ok)
+	assert.Equal(t, serverError.Code(), codes.NotFound)
+	assert.Contains(t, serverError.Message(), "not found")
 }
